@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(python -m venv .venv)",
+      "Bash(.venv/Scripts/pip install *)",
+      "Bash(.venv/Scripts/python -c \"from app.main import app; from app.logger import log_threat; print\\('OK'\\)\")",
+      "Bash(.venv/Scripts/python -c \"import secrets; print\\(secrets.token_hex\\(32\\)\\)\")",
+      "Bash(.venv/Scripts/python -c \"from app.main import app; from app.auth import verify_api_key, check_rate_limit; print\\('OK'\\)\")"
+    ]
+  }
+}

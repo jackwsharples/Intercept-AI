@@ -1,0 +1,11 @@
+{
+  "name": "garrison-js",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "terser garrison.js --compress passes=2 --mangle --output garrison.min.js"
+  },
+  "devDependencies": {
+    "terser": "^5.36.0"
+  }
+}
