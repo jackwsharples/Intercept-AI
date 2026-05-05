@@ -1,29 +1,4 @@
-/**
- * Garrison — Agency Threat Analytics Dashboard
- *
- * Assumed Supabase table (run in SQL editor):
- *
- *   CREATE TABLE threat_logs (
- *     id              uuid DEFAULT gen_random_uuid() PRIMARY KEY,
- *     agency_id       uuid REFERENCES auth.users(id) ON DELETE CASCADE,
- *     site_id         text NOT NULL,
- *     prompt_hash     text,              -- SHA-256 of the original prompt (never store plaintext)
- *     status          text CHECK (status IN ('blocked','allowed')),
- *     threat_level    integer CHECK (threat_level BETWEEN 0 AND 10),
- *     detection_layer text CHECK (detection_layer IN ('regex','semantic','none')),
- *     reason          text,
- *     created_at      timestamptz DEFAULT now()
- *   );
- *
- *   ALTER TABLE threat_logs ENABLE ROW LEVEL SECURITY;
- *   CREATE POLICY "agency_sees_own_logs" ON threat_logs
- *     FOR SELECT USING (agency_id = auth.uid());
- *
- * The garrison-api writes rows with the agency_id resolved from the site_id
- * via a sites table (future work). For now, agency_id is set at insert time.
- */
-
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -32,17 +7,19 @@ import {
 import {
   Shield, Globe, AlertTriangle, Zap,
   LogOut, ChevronDown, RefreshCw,
-  Activity, Layers,
+  Activity, Layers, Plus, Copy, Check, X,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function timeAgo(iso) {
   const s = Math.floor((Date.now() - new Date(iso)) / 1000)
-  if (s < 60)   return `${s}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 60)    return `${s}s ago`
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`
   return `${Math.floor(s / 86400)}d ago`
 }
@@ -54,17 +31,206 @@ function groupByDay(logs, days = 14) {
     const d = new Date(today)
     d.setDate(d.getDate() - i)
     result.push({
-      date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      date:  d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       count: 0,
-      _iso: d.toISOString().slice(0, 10),
+      _iso:  d.toISOString().slice(0, 10),
     })
   }
   logs.forEach(log => {
-    const day = new Date(log.created_at).toISOString().slice(0, 10)
+    const day    = new Date(log.created_at).toISOString().slice(0, 10)
     const bucket = result.find(r => r._iso === day)
     if (bucket) bucket.count++
   })
   return result
+}
+
+// ---------------------------------------------------------------------------
+// AddSiteModal
+// ---------------------------------------------------------------------------
+function AddSiteModal({ onClose, onSuccess }) {
+  const [step,    setStep]    = useState('form')
+  const [name,    setName]    = useState('')
+  const [url,     setUrl]     = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState(null)
+  const [result,  setResult]  = useState(null)
+  const [copied,  setCopied]  = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated — please log in again')
+
+      const resp = await fetch(`${API_URL}/admin/create-site`, {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ name, url }),
+      })
+
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.detail || 'Failed to create site')
+
+      setResult(data)
+      setStep('success')
+      onSuccess()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const snippet = result
+    ? `<script>\n  window.GARRISON_CONFIG = {\n    apiUrl:  '${API_URL}/analyze',\n    siteId:  '${result.site_id}',\n    apiKey:  '${result.raw_key}',\n  };\n</script>\n<script src="https://cdn.garrison.ai/garrison.js"></script>`
+    : ''
+
+  function copySnippet() {
+    navigator.clipboard.writeText(snippet)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-garrison-card border border-garrison-border rounded-2xl w-full max-w-lg shadow-2xl">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-garrison-border">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center">
+              {step === 'success'
+                ? <Check className="w-4 h-4 text-emerald-400" strokeWidth={2.5} />
+                : <Plus  className="w-4 h-4 text-indigo-400" strokeWidth={2.5} />
+              }
+            </div>
+            <div>
+              <h2 className="text-white font-semibold text-sm">
+                {step === 'success' ? 'Site added' : 'Add new site'}
+              </h2>
+              <p className="text-gray-500 text-xs mt-0.5">
+                {step === 'success' ? 'Copy the snippet below' : 'Generate an API key for a client site'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-300 transition-colors p-1.5 rounded-lg hover:bg-white/5"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {step === 'form' && (
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">Site name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Acme Leasing Co"
+                required
+                className="w-full bg-garrison-surface border border-garrison-border rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">Site URL</label>
+              <input
+                type="text"
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                placeholder="acme-leasing.com"
+                required
+                className="w-full bg-garrison-surface border border-garrison-border rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20 transition-colors"
+              />
+              <p className="text-xs text-gray-600 mt-1.5">Used to generate the site ID — e.g. acme-leasing.com</p>
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2.5 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-300 text-xs">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 text-sm text-gray-400 hover:text-white bg-transparent border border-garrison-border hover:border-white/20 rounded-lg py-2.5 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 flex items-center justify-center gap-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg py-2.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+                {loading ? 'Creating…' : 'Add site'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 'success' && result && (
+          <div className="px-6 py-5 space-y-4">
+            {/* Site info summary */}
+            <div className="flex items-center gap-3 bg-emerald-500/8 border border-emerald-500/20 rounded-xl px-4 py-3">
+              <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <div className="text-xs">
+                <span className="text-emerald-300 font-semibold">{result.name}</span>
+                <span className="text-gray-500 ml-2 font-mono">{result.site_id}</span>
+              </div>
+            </div>
+
+            {/* Snippet */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-gray-400">Paste before <code className="text-indigo-400">&lt;/body&gt;</code> on the client site</p>
+                <button
+                  onClick={copySnippet}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors px-2.5 py-1 rounded-lg hover:bg-white/5"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <pre className="bg-garrison-surface border border-garrison-border rounded-xl px-4 py-4 text-xs text-gray-300 font-mono overflow-x-auto leading-relaxed whitespace-pre">
+                {snippet}
+              </pre>
+              <p className="text-xs text-red-400/80 mt-2 flex items-center gap-1.5">
+                <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                Save the API key now — it will not be shown again.
+              </p>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="w-full text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg py-2.5 transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -136,9 +302,9 @@ function LayerBadge({ layer }) {
 
 function ThreatBadge({ level }) {
   const cls =
-    level >= 9 ? 'text-red-400' :
-    level >= 7 ? 'text-orange-400' :
-    level >= 5 ? 'text-yellow-400' :
+    level >= 9 ? 'text-red-400'     :
+    level >= 7 ? 'text-orange-400'  :
+    level >= 5 ? 'text-yellow-400'  :
                  'text-emerald-400'
   return <span className={`font-mono font-bold text-sm tabular-nums ${cls}`}>{level}/10</span>
 }
@@ -170,20 +336,21 @@ function TableSkeleton() {
 // ---------------------------------------------------------------------------
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [user,       setUser]       = useState(null)
-  const [logs,       setLogs]       = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState(null)
-  const [lastSynced, setLastSynced] = useState(null)
-  const [selectedSite, setSelectedSite] = useState('all')
-  const [siteOpen,   setSiteOpen]   = useState(false)
+  const [user,            setUser]           = useState(null)
+  const [logs,            setLogs]           = useState([])
+  const [registeredSites, setRegisteredSites] = useState([])
+  const [loading,         setLoading]        = useState(true)
+  const [sitesLoading,    setSitesLoading]   = useState(true)
+  const [error,           setError]          = useState(null)
+  const [lastSynced,      setLastSynced]     = useState(null)
+  const [selectedSite,    setSelectedSite]   = useState('all')
+  const [siteOpen,        setSiteOpen]       = useState(false)
+  const [showAddSite,     setShowAddSite]    = useState(false)
 
-  // --- Auth ---
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user))
   }, [])
 
-  // --- Fetch threat logs (last 30 days, blocked only) ---
   async function fetchLogs() {
     setLoading(true)
     setError(null)
@@ -205,15 +372,25 @@ export default function Dashboard() {
     setLoading(false)
   }
 
+  const fetchSites = useCallback(async () => {
+    setSitesLoading(true)
+    const { data } = await supabase
+      .from('sites')
+      .select('id, site_id, name, url, created_at')
+      .order('created_at', { ascending: false })
+    setRegisteredSites(data ?? [])
+    setSitesLoading(false)
+  }, [])
+
   useEffect(() => { fetchLogs() }, [])
+  useEffect(() => { fetchSites() }, [fetchSites])
 
   async function handleLogout() {
     await supabase.auth.signOut()
     navigate('/login')
   }
 
-  // --- Derived data ---
-  const sites = useMemo(
+  const filterSites = useMemo(
     () => ['all', ...Array.from(new Set(logs.map(l => l.site_id))).sort()],
     [logs]
   )
@@ -228,11 +405,7 @@ export default function Dashboard() {
     [visibleLogs]
   )
 
-  const chartData = useMemo(
-    () => groupByDay(visibleLogs, 14),
-    [visibleLogs]
-  )
-
+  const chartData  = useMemo(() => groupByDay(visibleLogs, 14), [visibleLogs])
   const recentLogs = visibleLogs.slice(0, 20)
 
   // ---------------------------------------------------------------------------
@@ -240,17 +413,95 @@ export default function Dashboard() {
     <div className="min-h-screen bg-garrison-bg">
       <TopBar user={user} onLogout={handleLogout} />
 
+      {showAddSite && (
+        <AddSiteModal
+          onClose={() => setShowAddSite(false)}
+          onSuccess={() => fetchSites()}
+        />
+      )}
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
         {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-white font-bold text-2xl tracking-tight">Threat Analytics</h1>
+            <h1 className="text-white font-bold text-2xl tracking-tight">Dashboard</h1>
             <p className="text-gray-500 text-sm mt-0.5">
               {lastSynced
                 ? `Last synced ${timeAgo(lastSynced.toISOString())}`
                 : 'Loading…'}
             </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowAddSite(true)}
+              className="flex items-center gap-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg px-4 py-2 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add new site
+            </button>
+          </div>
+        </div>
+
+        {/* Registered sites section */}
+        <div className="bg-garrison-card border border-garrison-border rounded-2xl overflow-hidden">
+          <div className="px-6 py-5 border-b border-garrison-border flex items-center justify-between">
+            <div>
+              <h2 className="text-white font-semibold">Protected Sites</h2>
+              <p className="text-gray-500 text-xs mt-0.5">Sites with active Garrison shields</p>
+            </div>
+            {!sitesLoading && (
+              <span className="text-xs text-gray-600 bg-garrison-surface border border-garrison-border px-2.5 py-1 rounded-lg">
+                {registeredSites.length} {registeredSites.length === 1 ? 'site' : 'sites'}
+              </span>
+            )}
+          </div>
+
+          {sitesLoading ? (
+            <div className="px-6 py-8 flex items-center justify-center">
+              <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+            </div>
+          ) : registeredSites.length === 0 ? (
+            <div className="px-6 py-12 flex flex-col items-center gap-3 text-center">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+                <Globe className="w-5 h-5 text-indigo-400" strokeWidth={1.75} />
+              </div>
+              <p className="text-gray-400 font-medium">No sites yet</p>
+              <p className="text-gray-600 text-xs max-w-xs">
+                Click <strong className="text-gray-400">Add new site</strong> to generate an API key and get the install snippet.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-garrison-border">
+              {registeredSites.map(site => (
+                <div key={site.id} className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-white/[0.015] transition-colors">
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center flex-shrink-0">
+                      <Globe className="w-4 h-4 text-indigo-400" strokeWidth={1.75} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{site.name}</p>
+                      <p className="text-xs text-gray-500 font-mono mt-0.5 truncate">{site.url}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <span className="hidden sm:block text-[11px] text-gray-500 font-mono bg-garrison-surface border border-garrison-border px-2.5 py-1 rounded-lg">
+                      {site.site_id}
+                    </span>
+                    <span className="text-xs text-gray-600">{timeAgo(site.created_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Analytics header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
+          <div>
+            <h2 className="text-white font-semibold text-lg">Threat Analytics</h2>
+            <p className="text-gray-500 text-xs mt-0.5">Last 30 days — blocked events only</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -266,7 +517,7 @@ export default function Dashboard() {
               </button>
               {siteOpen && (
                 <div className="absolute right-0 top-full mt-1.5 w-56 bg-garrison-card border border-garrison-border rounded-xl shadow-2xl z-20 overflow-hidden py-1">
-                  {sites.map(s => (
+                  {filterSites.map(s => (
                     <button
                       key={s}
                       onClick={() => { setSelectedSite(s); setSiteOpen(false) }}
@@ -308,10 +559,10 @@ export default function Dashboard() {
           <MetricCard
             icon={Globe}
             label="Total Sites Protected"
-            value={loading ? '—' : String(sites.length - 1)}
-            sub="unique site_ids"
+            value={sitesLoading ? '—' : String(registeredSites.length)}
+            sub="registered sites"
             color={{ bg: 'bg-indigo-500/10', icon: 'text-indigo-400', value: 'text-indigo-400' }}
-            loading={loading}
+            loading={sitesLoading}
           />
           <MetricCard
             icon={AlertTriangle}
@@ -408,7 +659,9 @@ export default function Dashboard() {
                         </div>
                         <p className="text-gray-400 font-medium">No threats detected</p>
                         <p className="text-gray-600 text-xs">
-                          {selectedSite !== 'all' ? `No blocked events for ${selectedSite}` : 'All sites are clean for the last 30 days'}
+                          {selectedSite !== 'all'
+                            ? `No blocked events for ${selectedSite}`
+                            : 'All sites are clean for the last 30 days'}
                         </p>
                       </div>
                     </td>

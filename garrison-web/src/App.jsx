@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import { motion, useInView } from 'framer-motion'
 import {
   Shield, Zap, Lock, WifiOff, Layers, Eye,
@@ -51,9 +51,17 @@ function Navbar() {
           <a href="#specs"        className="hover:text-white transition-colors duration-150">Specs</a>
         </div>
 
-        <button className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors duration-150 shadow-md shadow-indigo-500/20">
-          Request Access
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/login"
+            className="px-4 py-2 text-sm font-semibold rounded-lg border border-garrison-border hover:border-indigo-500/50 text-gray-300 hover:text-white transition-colors duration-150"
+          >
+            Log in
+          </Link>
+          <button className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors duration-150 shadow-md shadow-indigo-500/20">
+            Request Access
+          </button>
+        </div>
       </div>
     </nav>
   )
