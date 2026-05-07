@@ -1,17 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom'
 import { motion, useInView } from 'framer-motion'
 import {
   Shield, Zap, Lock, WifiOff, Layers, Eye,
   ChevronRight, ArrowRight, Terminal,
   AlertTriangle, Activity, Globe,
+  Menu, X, Check,
 } from 'lucide-react'
+import { supabase } from './lib/supabase'
 import Login          from './pages/Login.jsx'
 import Dashboard      from './pages/Dashboard.jsx'
+import Team           from './pages/Team.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 
 // ---------------------------------------------------------------------------
-// Shared animation presets
+// Shared animation preset
 // ---------------------------------------------------------------------------
 const fadeUp = (delay = 0) => ({
   initial: { opacity: 0, y: 28 },
@@ -21,48 +24,247 @@ const fadeUp = (delay = 0) => ({
 })
 
 // ---------------------------------------------------------------------------
+// Lead Capture Modal
+// ---------------------------------------------------------------------------
+function LeadModal({ onClose }) {
+  const [name,    setName]    = useState('')
+  const [agency,  setAgency]  = useState('')
+  const [email,   setEmail]   = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState(null)
+  const [success, setSuccess] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    const { error: err } = await supabase
+      .from('leads')
+      .insert({ name, agency, email })
+    if (err) {
+      setError(
+        err.code === '23505'
+          ? "You're already on our list — we'll be in touch soon."
+          : 'Something went wrong. Email us at jack.w.sharples@gmail.com'
+      )
+    } else {
+      setSuccess(true)
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+        className="bg-garrison-card border border-garrison-border rounded-2xl w-full max-w-md shadow-2xl"
+      >
+        <div className="flex items-center justify-between px-6 py-5 border-b border-garrison-border">
+          <div>
+            <h2 className="text-white font-semibold">Get early access</h2>
+            <p className="text-gray-500 text-xs mt-0.5">We'll reach out within 24 hours</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-300 transition-colors p-1.5 rounded-lg hover:bg-white/5"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {success ? (
+          <div className="px-6 py-12 text-center">
+            <div className="w-12 h-12 bg-emerald-500/15 border border-emerald-500/25 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Check className="w-6 h-6 text-emerald-400" />
+            </div>
+            <h3 className="text-white font-semibold text-lg mb-2">You're on the list</h3>
+            <p className="text-gray-400 text-sm mb-6">
+              We'll be in touch within 24 hours to get you set up.
+            </p>
+            <button
+              onClick={onClose}
+              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">Your name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Jack Sharples"
+                required
+                className="w-full bg-garrison-surface border border-garrison-border rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">Agency name</label>
+              <input
+                type="text"
+                value={agency}
+                onChange={e => setAgency(e.target.value)}
+                placeholder="Acme Digital Agency"
+                required
+                className="w-full bg-garrison-surface border border-garrison-border rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">Work email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="jack@acme.agency"
+                required
+                className="w-full bg-garrison-surface border border-garrison-border rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20 transition-colors"
+              />
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2.5 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-300 text-xs">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl py-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>Request Access <ArrowRight className="w-4 h-4" /></>
+              )}
+            </button>
+            <p className="text-xs text-gray-600 text-center">
+              No spam. Early access + onboarding call.
+            </p>
+          </form>
+        )}
+      </motion.div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Navbar
 // ---------------------------------------------------------------------------
-function Navbar() {
-  const [scrolled, setScrolled] = useState(false)
+function Navbar({ onRequestAccess }) {
+  const [scrolled,  setScrolled]  = useState(false)
+  const [menuOpen,  setMenuOpen]  = useState(false)
+
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 24)
     window.addEventListener('scroll', fn, { passive: true })
     return () => window.removeEventListener('scroll', fn)
   }, [])
 
+  const navLinks = [
+    { href: '#how-it-works', label: 'How it works' },
+    { href: '#features',     label: 'Features' },
+    { href: '#specs',        label: 'Specs' },
+  ]
+
   return (
     <nav className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
-      scrolled
-        ? 'bg-garrison-bg/80 backdrop-blur-xl border-b border-garrison-border'
+      scrolled || menuOpen
+        ? 'bg-garrison-bg/90 backdrop-blur-xl border-b border-garrison-border'
         : ''
     }`}>
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+        <Link to="/" className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
             <Shield className="w-4 h-4 text-white" strokeWidth={2.5} />
           </div>
           <span className="font-bold text-white text-lg tracking-tight">Garrison</span>
-        </div>
+        </Link>
 
+        {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-8 text-sm text-gray-400">
-          <a href="#how-it-works" className="hover:text-white transition-colors duration-150">How it works</a>
-          <a href="#features"     className="hover:text-white transition-colors duration-150">Features</a>
-          <a href="#specs"        className="hover:text-white transition-colors duration-150">Specs</a>
+          {navLinks.map(l => (
+            <a key={l.href} href={l.href} className="hover:text-white transition-colors duration-150">
+              {l.label}
+            </a>
+          ))}
+          <Link to="/team" className="hover:text-white transition-colors duration-150">
+            Team
+          </Link>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2">
           <Link
             to="/login"
             className="px-4 py-2 text-sm font-semibold rounded-lg border border-garrison-border hover:border-indigo-500/50 text-gray-300 hover:text-white transition-colors duration-150"
           >
             Log in
           </Link>
-          <button className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors duration-150 shadow-md shadow-indigo-500/20">
+          <button
+            onClick={onRequestAccess}
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors duration-150 shadow-md shadow-indigo-500/20"
+          >
             Request Access
           </button>
         </div>
+
+        {/* Mobile hamburger */}
+        <button
+          className="md:hidden text-gray-400 hover:text-white p-2 transition-colors"
+          onClick={() => setMenuOpen(v => !v)}
+          aria-label="Toggle menu"
+        >
+          {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
       </div>
+
+      {/* Mobile menu */}
+      {menuOpen && (
+        <div className="md:hidden border-t border-garrison-border bg-garrison-bg/95 backdrop-blur-xl px-6 py-4 space-y-1">
+          {navLinks.map(l => (
+            <a
+              key={l.href}
+              href={l.href}
+              onClick={() => setMenuOpen(false)}
+              className="block text-gray-300 hover:text-white py-2.5 text-sm transition-colors"
+            >
+              {l.label}
+            </a>
+          ))}
+          <Link
+            to="/team"
+            onClick={() => setMenuOpen(false)}
+            className="block text-gray-300 hover:text-white py-2.5 text-sm transition-colors"
+          >
+            Team
+          </Link>
+          <div className="pt-3 flex flex-col gap-2 border-t border-garrison-border">
+            <Link
+              to="/login"
+              onClick={() => setMenuOpen(false)}
+              className="w-full text-center px-4 py-2.5 text-sm font-semibold rounded-lg border border-garrison-border text-gray-300 hover:text-white transition-colors"
+            >
+              Log in
+            </Link>
+            <button
+              onClick={() => { setMenuOpen(false); onRequestAccess() }}
+              className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+            >
+              Request Access
+            </button>
+          </div>
+        </div>
+      )}
     </nav>
   )
 }
@@ -70,17 +272,15 @@ function Navbar() {
 // ---------------------------------------------------------------------------
 // Hero
 // ---------------------------------------------------------------------------
-function Hero() {
+function Hero({ onRequestAccess }) {
   return (
     <section className="relative pt-36 pb-28 px-6 overflow-hidden">
-      {/* Background layers */}
       <div className="absolute inset-0 dot-grid" />
       <div className="absolute inset-0 bg-gradient-to-b from-garrison-bg via-transparent to-garrison-bg" />
       <div className="absolute top-1/3 left-1/3 w-[600px] h-[600px] -translate-x-1/2 -translate-y-1/2 bg-indigo-700/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute top-1/4 right-1/4 w-80 h-80 bg-violet-700/8 rounded-full blur-[80px] pointer-events-none" />
 
       <div className="relative max-w-4xl mx-auto text-center">
-        {/* Badge */}
         <motion.div {...fadeUp(0)}>
           <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 text-xs font-medium mb-7">
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse-slow" />
@@ -88,7 +288,6 @@ function Hero() {
           </span>
         </motion.div>
 
-        {/* Headline */}
         <motion.h1
           {...fadeUp(0.08)}
           className="text-5xl md:text-6xl lg:text-[4.25rem] font-bold text-white leading-[1.06] tracking-tight mb-6"
@@ -98,7 +297,6 @@ function Hero() {
           the business.
         </motion.h1>
 
-        {/* Sub-headline */}
         <motion.p
           {...fadeUp(0.16)}
           className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed"
@@ -107,12 +305,14 @@ function Hero() {
           <span className="text-gray-200 font-medium">Zero lag. 100% visibility.</span>
         </motion.p>
 
-        {/* CTAs */}
         <motion.div
           {...fadeUp(0.22)}
           className="flex flex-col sm:flex-row items-center justify-center gap-4"
         >
-          <button className="group w-full sm:w-auto px-7 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-all duration-200 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 flex items-center justify-center gap-2">
+          <button
+            onClick={onRequestAccess}
+            className="group w-full sm:w-auto px-7 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-all duration-200 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 flex items-center justify-center gap-2"
+          >
             Shield Your Bot
             <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </button>
@@ -125,7 +325,6 @@ function Hero() {
           </a>
         </motion.div>
 
-        {/* Trust strip */}
         <motion.p
           {...fadeUp(0.3)}
           className="mt-14 text-[11px] text-gray-600 uppercase tracking-[0.18em]"
@@ -138,7 +337,7 @@ function Hero() {
 }
 
 // ---------------------------------------------------------------------------
-// Terminal — data & component
+// Terminal
 // ---------------------------------------------------------------------------
 const BLOCKED_LINES = [
   { delay: 0,    text: 'garrison@shield:~$ monitoring active',          cls: 'text-gray-600' },
@@ -199,7 +398,6 @@ function TerminalPanel({ lines, label, active, accentCls, badgeCls }) {
 
   return (
     <div className={`flex-1 min-w-0 rounded-2xl border ${accentCls} bg-[#09090f] overflow-hidden relative scan-line`}>
-      {/* Chrome bar */}
       <div className={`px-4 py-3 border-b ${accentCls} bg-[#0b0b14] flex items-center justify-between`}>
         <div className="flex items-center gap-3">
           <div className="flex gap-1.5">
@@ -213,12 +411,10 @@ function TerminalPanel({ lines, label, active, accentCls, badgeCls }) {
           {label}
         </span>
       </div>
-
-      {/* Output */}
       <div className="p-5 font-mono text-[12px] leading-[1.7] min-h-[320px]">
         {lines.slice(0, count).map((line, i) => (
           <div key={i} className={line.cls || 'opacity-0 select-none'}>
-            {line.text || '\u00A0'}
+            {line.text || ' '}
           </div>
         ))}
         {active && count < lines.length && (
@@ -230,7 +426,7 @@ function TerminalPanel({ lines, label, active, accentCls, badgeCls }) {
 }
 
 function VisualHook() {
-  const ref = useRef(null)
+  const ref    = useRef(null)
   const inView = useInView(ref, { once: true, margin: '-80px' })
 
   return (
@@ -249,25 +445,9 @@ function VisualHook() {
           </p>
         </motion.div>
 
-        <motion.div
-          ref={ref}
-          {...fadeUp(0.1)}
-          className="flex flex-col lg:flex-row gap-4"
-        >
-          <TerminalPanel
-            lines={BLOCKED_LINES}
-            label="BLOCKED"
-            active={inView}
-            accentCls="border-red-500/20"
-            badgeCls="bg-red-500/15 text-red-400"
-          />
-          <TerminalPanel
-            lines={ALLOWED_LINES}
-            label="ALLOWED"
-            active={inView}
-            accentCls="border-emerald-500/20"
-            badgeCls="bg-emerald-500/15 text-emerald-400"
-          />
+        <motion.div ref={ref} {...fadeUp(0.1)} className="flex flex-col lg:flex-row gap-4">
+          <TerminalPanel lines={BLOCKED_LINES} label="BLOCKED" active={inView} accentCls="border-red-500/20"     badgeCls="bg-red-500/15 text-red-400" />
+          <TerminalPanel lines={ALLOWED_LINES} label="ALLOWED" active={inView} accentCls="border-emerald-500/20" badgeCls="bg-emerald-500/15 text-emerald-400" />
         </motion.div>
       </div>
     </section>
@@ -302,7 +482,7 @@ const BENTO = [
   {
     icon: WifiOff,
     title: 'Fail-Open Design',
-    desc: 'A 250ms AbortController means the shield never blocks your chat. If Garrison goes offline, messages flow through unimpeded. Your UX is always safe.',
+    desc: 'A 250ms AbortController means the shield never blocks your chat. If Garrison goes offline, messages flow through unimpeded.',
     wide: true,
     accent: { ring: 'border-emerald-500/25', icon: 'text-emerald-400', bg: 'bg-emerald-500/10', glow: 'group-hover:shadow-emerald-500/10' },
   },
@@ -330,14 +510,7 @@ function WhyGarrison() {
               <motion.div
                 key={i}
                 {...fadeUp(i * 0.08)}
-                className={`
-                  group ${item.wide ? 'lg:col-span-2' : ''}
-                  p-6 rounded-2xl border ${item.accent.ring}
-                  bg-garrison-card hover:bg-garrison-surface
-                  transition-all duration-300
-                  hover:shadow-xl ${item.accent.glow}
-                  glow-border-hover
-                `}
+                className={`group ${item.wide ? 'lg:col-span-2' : ''} p-6 rounded-2xl border ${item.accent.ring} bg-garrison-card hover:bg-garrison-surface transition-all duration-300 hover:shadow-xl ${item.accent.glow} glow-border-hover`}
               >
                 <div className={`w-11 h-11 rounded-xl ${item.accent.bg} flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-200`}>
                   <Icon className={`w-5 h-5 ${item.accent.icon}`} strokeWidth={1.75} />
@@ -362,7 +535,6 @@ const THREATS = [
   { type: 'Persona Hijack',       site: 'lawfirm-chat.io',  time: '5m ago',   level: 9  },
   { type: 'Instruction Override', site: 'leasing-co.com',   time: '12m ago',  level: 10 },
 ]
-
 const STATS = [
   { label: 'Jailbreaks Blocked',    value: '142',  sub: 'this month',    color: 'text-red-400' },
   { label: 'Sites Protected',       value: '3',    sub: 'active shields', color: 'text-indigo-400' },
@@ -387,7 +559,6 @@ function DashboardPreview() {
           {...fadeUp(0.1)}
           className="max-w-3xl mx-auto rounded-2xl border border-garrison-border bg-garrison-card overflow-hidden shadow-2xl shadow-black/40 glow-border"
         >
-          {/* Header bar */}
           <div className="px-5 py-4 border-b border-garrison-border bg-garrison-surface flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-5 h-5 rounded-md bg-indigo-600 flex items-center justify-center shadow-sm shadow-indigo-500/40">
@@ -401,7 +572,6 @@ function DashboardPreview() {
             </span>
           </div>
 
-          {/* Stats row */}
           <div className="grid grid-cols-3 divide-x divide-garrison-border border-b border-garrison-border">
             {STATS.map((s, i) => (
               <div key={i} className="py-5 text-center px-3">
@@ -412,17 +582,11 @@ function DashboardPreview() {
             ))}
           </div>
 
-          {/* Threat log */}
           <div className="p-4 pb-5">
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2.5 px-1">
-              Recent Threats
-            </p>
+            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2.5 px-1">Recent Threats</p>
             <div className="space-y-0.5">
               {THREATS.map((t, i) => (
-                <div
-                  key={i}
-                  className="group flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-white/[0.03] transition-colors"
-                >
+                <div key={i} className="group flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-white/[0.03] transition-colors">
                   <div className="flex items-center gap-2.5">
                     <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
                     <span className="text-[13px] text-white font-medium">{t.type}</span>
@@ -446,36 +610,12 @@ function DashboardPreview() {
 // Technical Specs
 // ---------------------------------------------------------------------------
 const SPECS = [
-  {
-    label: 'Sanitization Method',
-    value: 'XML-Delimited Input Isolation',
-    detail: 'User content is wrapped in <unverified_input> tags before reaching any LLM — a structural trust boundary, not just regex.',
-  },
-  {
-    label: 'Infrastructure',
-    value: 'Serverless Edge Architecture',
-    detail: 'Vercel Edge Functions or AWS Lambda@Edge. True scale-to-zero — $0 cost for your first 10 client sites.',
-  },
-  {
-    label: 'End-to-End Latency',
-    value: 'p95 under 300ms',
-    detail: 'Regex layer fires in <1ms. Gemini semantic audit takes ~180ms. AbortController hard-cuts at 250ms.',
-  },
-  {
-    label: 'Platform Support',
-    value: 'Any Chat Widget',
-    detail: 'MutationObserver + capture-phase event interception. No SDK, no plugin, no widget modification.',
-  },
-  {
-    label: 'Threat Intelligence',
-    value: 'Proprietary Threat Library',
-    detail: 'Every blocked attempt logged with site_id, prompt hash, threat_level, and timestamp. Your data moat.',
-  },
-  {
-    label: 'Deployment',
-    value: 'One Script Tag',
-    detail: 'Add <script src="garrison.js"> and set window.GARRISON_CONFIG. Fully operational in under 60 seconds.',
-  },
+  { label: 'Sanitization Method',  value: 'XML-Delimited Input Isolation',  detail: 'User content is wrapped in <unverified_input> tags before reaching any LLM — a structural trust boundary, not just regex.' },
+  { label: 'Infrastructure',       value: 'Serverless Edge Architecture',    detail: 'Vercel Edge Functions. True scale-to-zero — $0 cost for your first 10 client sites.' },
+  { label: 'End-to-End Latency',   value: 'p95 under 300ms',                detail: 'Regex layer fires in <1ms. Gemini semantic audit takes ~180ms. AbortController hard-cuts at 250ms.' },
+  { label: 'Platform Support',     value: 'Any Chat Widget',                 detail: 'MutationObserver + capture-phase event interception. No SDK, no plugin, no widget modification.' },
+  { label: 'Threat Intelligence',  value: 'Proprietary Threat Library',      detail: 'Every blocked attempt logged with site_id, prompt hash, threat_level, and timestamp. Your data moat.' },
+  { label: 'Deployment',           value: 'One Script Tag',                  detail: 'Add <script src="garrison.js"> and set window.GARRISON_CONFIG. Fully operational in under 60 seconds.' },
 ]
 
 function TechSpecs() {
@@ -484,9 +624,7 @@ function TechSpecs() {
       <div className="max-w-6xl mx-auto">
         <motion.div {...fadeUp(0)} className="text-center mb-14">
           <p className="text-indigo-400 text-xs font-semibold uppercase tracking-widest mb-3">Technical Specs</p>
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            Enterprise-grade. SMB-priced.
-          </h2>
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Enterprise-grade. SMB-priced.</h2>
           <p className="text-gray-400 max-w-lg mx-auto text-[15px]">
             Built on the same principles used in enterprise AI security — deployed at a price point that makes sense for a 10-site agency.
           </p>
@@ -497,10 +635,7 @@ function TechSpecs() {
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-garrison-border rounded-2xl overflow-hidden border border-garrison-border"
         >
           {SPECS.map((s, i) => (
-            <div
-              key={i}
-              className="bg-garrison-card hover:bg-[#131326] transition-colors duration-200 p-6"
-            >
+            <div key={i} className="bg-garrison-card hover:bg-[#131326] transition-colors duration-200 p-6">
               <p className="text-[10px] text-indigo-400 font-semibold uppercase tracking-widest mb-2">{s.label}</p>
               <p className="text-white font-semibold text-[15px] mb-2">{s.value}</p>
               <p className="text-gray-500 text-sm leading-relaxed">{s.detail}</p>
@@ -515,7 +650,7 @@ function TechSpecs() {
 // ---------------------------------------------------------------------------
 // CTA Banner
 // ---------------------------------------------------------------------------
-function CTABanner() {
+function CTABanner({ onRequestAccess }) {
   return (
     <section className="py-24 px-6">
       <div className="max-w-3xl mx-auto">
@@ -523,18 +658,14 @@ function CTABanner() {
           {...fadeUp(0)}
           className="relative rounded-2xl border border-indigo-500/25 bg-gradient-to-br from-indigo-950/60 via-garrison-card to-garrison-card p-12 text-center overflow-hidden"
         >
-          {/* Grid overlay */}
           <div className="absolute inset-0 line-grid opacity-30" />
-          {/* Top light streak */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-px bg-gradient-to-r from-transparent via-indigo-500/60 to-transparent" />
-          {/* Corner glow */}
           <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-64 h-32 bg-indigo-700/20 blur-3xl pointer-events-none" />
 
           <div className="relative">
             <div className="w-14 h-14 bg-indigo-500/15 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-indigo-500/25">
               <Shield className="w-7 h-7 text-indigo-400" strokeWidth={1.5} />
             </div>
-
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4 leading-tight">
               Your clients' chatbots<br />are exposed right now.
             </h2>
@@ -544,13 +675,19 @@ function CTABanner() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="group px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-all duration-200 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 flex items-center justify-center gap-2">
+              <button
+                onClick={onRequestAccess}
+                className="group px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-all duration-200 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 flex items-center justify-center gap-2"
+              >
                 Shield Your Bot
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </button>
-              <button className="px-8 py-3.5 border border-garrison-border hover:border-indigo-500/40 text-gray-300 hover:text-white font-semibold rounded-xl transition-all duration-200">
+              <Link
+                to="/team"
+                className="px-8 py-3.5 border border-garrison-border hover:border-indigo-500/40 text-gray-300 hover:text-white font-semibold rounded-xl transition-all duration-200 flex items-center justify-center"
+              >
                 Talk to the team
-              </button>
+              </Link>
             </div>
           </div>
         </motion.div>
@@ -573,25 +710,42 @@ function Footer() {
           <span className="font-bold text-white">Garrison</span>
           <span className="text-gray-600 text-sm">— AI Security Posture Management</span>
         </div>
-        <p className="text-gray-600 text-sm">© 2026 Garrison. Built for the agentic era.</p>
+        <div className="flex items-center gap-6 text-sm text-gray-600">
+          <Link to="/team" className="hover:text-gray-400 transition-colors">Team</Link>
+          <a href="mailto:jack.w.sharples@gmail.com" className="hover:text-gray-400 transition-colors">Contact</a>
+          <span>© 2026 Garrison.</span>
+        </div>
       </div>
     </footer>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Landing page (assembles all sections)
+// Landing page
 // ---------------------------------------------------------------------------
 function Landing() {
+  const navigate   = useNavigate()
+  const [showLead, setShowLead] = useState(false)
+
+  async function handleCTA() {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      navigate('/dashboard')
+    } else {
+      setShowLead(true)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-garrison-bg">
-      <Navbar />
-      <Hero />
+      {showLead && <LeadModal onClose={() => setShowLead(false)} />}
+      <Navbar      onRequestAccess={handleCTA} />
+      <Hero        onRequestAccess={handleCTA} />
       <VisualHook />
       <WhyGarrison />
       <DashboardPreview />
       <TechSpecs />
-      <CTABanner />
+      <CTABanner   onRequestAccess={handleCTA} />
       <Footer />
     </div>
   )
@@ -606,6 +760,7 @@ export default function App() {
       <Routes>
         <Route path="/"          element={<Landing />} />
         <Route path="/login"     element={<Login />} />
+        <Route path="/team"      element={<Team />} />
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <Dashboard />
