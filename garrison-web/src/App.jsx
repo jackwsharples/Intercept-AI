@@ -10,8 +10,10 @@ import {
 import { supabase } from './lib/supabase'
 import Login          from './pages/Login.jsx'
 import Dashboard      from './pages/Dashboard.jsx'
+import Settings       from './pages/Settings.jsx'
 import Team           from './pages/Team.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import { ToastProvider } from './components/Toast.jsx'
 
 // ---------------------------------------------------------------------------
 // Shared animation preset
@@ -756,17 +758,24 @@ function Landing() {
 // ---------------------------------------------------------------------------
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/"          element={<Landing />} />
-        <Route path="/login"     element={<Login />} />
-        <Route path="/team"      element={<Team />} />
-        <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        } />
-      </Routes>
-    </BrowserRouter>
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/"          element={<Landing />} />
+          <Route path="/login"     element={<Login />} />
+          <Route path="/team"      element={<Team />} />
+          <Route path="/dashboard" element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/settings"  element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          } />
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
   )
 }

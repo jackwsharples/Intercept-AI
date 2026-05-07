@@ -12,6 +12,7 @@ from app.layers import regex_layer, semantic_layer
 from app.config import REGEX_THREAT_LEVEL, SUPABASE_URL, SUPABASE_SERVICE_KEY, API_KEY_SALT
 from app.auth import verify_api_key, check_rate_limit, verify_supabase_jwt
 from app import logger
+from app.billing import router as billing_router
 
 app = FastAPI(
     title="Garrison API",
@@ -25,6 +26,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["*", "X-API-Key", "Authorization"],
 )
+
+app.include_router(billing_router)
 
 
 def _slugify_url(url: str) -> str:
@@ -156,3 +159,37 @@ async def create_site(
             raise HTTPException(status_code=502, detail=f"Failed to create site record: {r2.text}")
 
     return CreateSiteResponse(site_id=site_id, raw_key=raw_key, name=request.name)
+
+
+@app.post("/admin/regenerate-key")
+async def regenerate_key(
+    body: dict,
+    authorization: str | None = Header(default=None),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+    token = authorization.removeprefix("Bearer ")
+    user  = await verify_supabase_jwt(token)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+
+    agency_id = user.get("id")
+    key_id    = body.get("key_id")
+    if not key_id:
+        raise HTTPException(status_code=400, detail="key_id is required")
+
+    raw_key  = f"gsk_{secrets.token_urlsafe(32)}"
+    key_hash = hashlib.sha256(f"{API_KEY_SALT}{raw_key}".encode()).hexdigest()
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        r = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/api_keys",
+            headers=_SB_HEADERS,
+            params={"id": f"eq.{key_id}", "agency_id": f"eq.{agency_id}"},
+            json={"key_hash": key_hash},
+        )
+        if r.status_code not in (200, 201, 204):
+            raise HTTPException(status_code=502, detail=f"Failed to update key: {r.text}")
+
+    return {"raw_key": raw_key}
