@@ -53,7 +53,7 @@ export default function Team() {
             </div>
 
             <div>
-              <h2 className="text-white font-bold text-xl">Jack Woodward Sharples</h2>
+              <h2 className="text-white font-bold text-xl">Jack Sharples</h2>
               <p className="text-indigo-400 text-sm font-medium mt-1.5">
                 Founder &amp; Lead Security Engineer
               </p>
@@ -72,7 +72,7 @@ export default function Team() {
                 Email Me
               </a>
               <a
-                href="https://www.linkedin.com/in/jackwoodsharples"
+                href="https://www.linkedin.com/in/jack-w-sharples/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-garrison-border hover:border-indigo-500/50 text-gray-300 hover:text-white text-sm font-semibold rounded-xl transition-colors"
