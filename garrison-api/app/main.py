@@ -66,7 +66,7 @@ async def analyze(
 
     regex_result = regex_layer.check(request.prompt)
     if regex_result.triggered and regex_result.threat_level >= REGEX_THREAT_LEVEL:
-        logger.log_threat(
+        await logger.log_threat(
             site_id=site_id,
             prompt=request.prompt,
             status="blocked",
@@ -87,7 +87,7 @@ async def analyze(
         raise HTTPException(status_code=502, detail=f"Semantic layer unavailable: {exc}")
 
     if sem_result.status == "blocked":
-        logger.log_threat(
+        await logger.log_threat(
             site_id=site_id,
             prompt=request.prompt,
             status="blocked",

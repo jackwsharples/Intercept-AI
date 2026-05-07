@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import logging
 
@@ -27,7 +26,7 @@ async def _insert(payload: dict) -> None:
         _log.warning("threat_log insert failed: %s", exc)
 
 
-def log_threat(
+async def log_threat(
     *,
     site_id: str | None,
     prompt: str,
@@ -37,8 +36,7 @@ def log_threat(
     reason: str,
 ) -> None:
     """
-    Fire-and-forget: schedule a Supabase insert without blocking the response.
-    Silently skips if Supabase is not configured (e.g. local dev without .env).
+    Awaitable Supabase insert. Silently skips if Supabase is not configured.
     """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return
@@ -50,8 +48,6 @@ def log_threat(
         "threat_level":    threat_level,
         "detection_layer": detection_layer,
         "reason":          reason,
-        # agency_id is intentionally omitted (NULL) until the sites table is added.
-        # The dashboard RLS policy is set to show NULL-agency rows to all authenticated users.
     }
 
-    asyncio.create_task(_insert(payload))
+    await _insert(payload)
