@@ -267,11 +267,13 @@ function TopBar({ user, subscription, siteCount }) {
     <header className="sticky top-0 z-40 bg-garrison-bg/80 backdrop-blur-xl border-b border-garrison-border">
       <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center shadow-sm shadow-indigo-500/40">
-            <Shield className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-          </div>
-          <span className="font-bold text-white text-base tracking-tight">Garrison</span>
-          <span className="hidden sm:block text-gray-600 text-sm ml-1">/ Dashboard</span>
+          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center shadow-sm shadow-indigo-500/40">
+              <Shield className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+            </div>
+            <span className="font-bold text-white text-base tracking-tight">Garrison</span>
+          </Link>
+          <span className="hidden sm:block text-gray-600 text-sm">/ Dashboard</span>
         </div>
 
         <div className="flex items-center gap-2" ref={ref}>
